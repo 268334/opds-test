@@ -1,0 +1,36 @@
+{
+  "timezone": "Asia/Shanghai",
+  "target_days_ago": 1,
+  "topics": [
+    {
+      "name": "新闻",
+      "url": "https://www.infzm.com/topics/t2.html"
+    },
+    {
+      "name": "深度",
+      "url": "https://www.infzm.com/topics/t202.html"
+    },
+    {
+      "name": "特稿",
+      "url": "https://www.infzm.com/topics/t1006.html"
+    },
+    {
+      "name": "观点",
+      "url": "https://www.infzm.com/topics/t239.html"
+    },
+    {
+      "name": "人文",
+      "url": "https://www.infzm.com/topics/t240.html"
+    },
+    {
+      "name": "对话",
+      "url": "https://www.infzm.com/topics/t217.html"
+    }
+  ],
+  "max_candidates_per_topic": 20,
+  "max_total_candidates": 80,
+  "min_articles": 1,
+  "request_delay_seconds": 1.0,
+  "excerpt_max_chars": 360,
+  "keep_issues": 60
+}
