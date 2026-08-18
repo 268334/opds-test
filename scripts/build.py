@@ -90,7 +90,11 @@ def normalize_content_url(href: str) -> str | None:
     m = re.search(r"/contents/(\d+)", parsed.path)
     if not m:
         return None
-    return f"{BASE}/contents/{m.group(1)}"
+
+    # Keep the query parameters supplied by the South Weekend topic page.
+    # Some article pages render differently when these source parameters are removed.
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"{BASE}/contents/{m.group(1)}{query}"
 
 
 def content_id(url: str) -> str:
@@ -184,7 +188,8 @@ def parse_article(session: requests.Session, item: dict, cfg: dict, now_local: d
     if not title:
         title = meta_content(soup, prop="og:title") or meta_content(soup, name="title")
     if not title:
-        raise ValueError(f"No title: {item['url']}")
+        snippet = re.sub(r"\\s+", " ", text[:180]).strip()
+        raise ValueError(f"No title: {item['url']} | response preview: {snippet}")
 
     pub_date = parse_date_from_jsonld(soup)
 
