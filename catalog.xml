@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:dc="http://purl.org/dc/terms/">
+  <id>urn:uuid:my-opds-test-catalog</id>
+  <title>我的测试书架</title>
+  <updated>2026-08-18T17:00:00Z</updated>
+  <author><name>我的私人书架</name></author>
+
+  <link rel="self"
+        href="catalog.xml"
+        type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+
+  <entry>
+    <id>urn:uuid:opds-test-book-2026</id>
+    <title>OPDS 测试书</title>
+    <updated>2026-08-18T17:00:00Z</updated>
+    <author><name>测试</name></author>
+    <dc:language>zh-CN</dc:language>
+    <summary>用于确认 KOReader 能从你的 OPDS 目录下载 EPUB。</summary>
+    <link rel="http://opds-spec.org/acquisition/open-access"
+          href="test.epub"
+          type="application/epub+zip"/>
+  </entry>
+</feed>
