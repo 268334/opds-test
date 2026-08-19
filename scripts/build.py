@@ -110,12 +110,56 @@ def infer_year_for_mmdd(mm: int, dd: int, now_local: datetime) -> date:
 
 
 def parse_card_date(strings: list[str], now_local: datetime) -> date | None:
-    # Prefer explicit MM-DD shown by the topic page.
-    for s in reversed(strings):
-        s = s.strip()
-        m = re.fullmatch(r"(\d{1,2})-(\d{1,2})", s)
-        if m:
-            return infer_year_for_mmdd(int(m.group(1)), int(m.group(2)), now_local)
+    joined = " ".join(strings)
+
+    # 先识别完整日期，例如 2026-08-18
+    m = re.search(
+        r"(?<!\d)(20\d{2})-(\d{1,2})-(\d{1,2})(?!\d)",
+        joined
+    )
+    if m:
+        return date(
+            int(m.group(1)),
+            int(m.group(2)),
+            int(m.group(3))
+        )
+
+    # 再识别栏目页常见的 08-18
+    matches = re.findall(
+        r"(?<!\d)(\d{1,2})-(\d{1,2})(?!\d)",
+        joined
+    )
+    if matches:
+        mm, dd = matches[-1]
+        return infer_year_for_mmdd(
+            int(mm),
+            int(dd),
+            now_local
+        )
+
+    # 相对时间
+    if "昨天" in joined:
+        return now_local.date() - timedelta(days=1)
+
+    if "前天" in joined:
+        return now_local.date() - timedelta(days=2)
+
+    m = re.search(r"(\d+)\s*小时前", joined)
+    if m:
+        return (
+            now_local - timedelta(hours=int(m.group(1)))
+        ).date()
+
+    m = re.search(r"(\d+)\s*分钟前", joined)
+    if m:
+        return (
+            now_local - timedelta(minutes=int(m.group(1)))
+        ).date()
+
+    if "刚刚" in joined:
+        return now_local.date()
+
+    return None
 
     # Relative labels are normally today's content.
     joined = " ".join(strings)
