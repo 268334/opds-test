@@ -97,6 +97,17 @@ def content_id(url: str) -> str:
     m = re.search(r"/contents/(\d+)", url)
     return m.group(1) if m else hashlib.sha1(url.encode()).hexdigest()[:12]
 
+def infer_year_for_mmdd(mm: int, dd: int, now_local: datetime) -> date:
+    candidate = date(now_local.year, mm, dd)
+
+    # 例如 1 月看到 12-30，应判断为上一年
+    if candidate > now_local.date() + timedelta(days=45):
+        candidate = date(now_local.year - 1, mm, dd)
+
+    return candidate
+
+
+
 
 def parse_card_date(strings: list[str], now_local: datetime) -> date | None:
     # Prefer explicit MM-DD shown by the topic page.
