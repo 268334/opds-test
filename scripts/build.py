@@ -90,11 +90,7 @@ def normalize_content_url(href: str) -> str | None:
     m = re.search(r"/contents/(\d+)", parsed.path)
     if not m:
         return None
-
-    # Keep the query parameters supplied by the South Weekend topic page.
-    # Some article pages render differently when these source parameters are removed.
-    query = f"?{parsed.query}" if parsed.query else ""
-    return f"{BASE}/contents/{m.group(1)}{query}"
+    return f"{BASE}/contents/{m.group(1)}"
 
 
 def content_id(url: str) -> str:
@@ -102,144 +98,125 @@ def content_id(url: str) -> str:
     return m.group(1) if m else hashlib.sha1(url.encode()).hexdigest()[:12]
 
 
-def collect_candidates(session: requests.Session, cfg: dict) -> list[dict]:
+def parse_card_date(strings: list[str], now_local: datetime) -> date | None:
+    # Prefer explicit MM-DD shown by the topic page.
+    for s in reversed(strings):
+        s = s.strip()
+        m = re.fullmatch(r"(\d{1,2})-(\d{1,2})", s)
+        if m:
+            return infer_year_for_mmdd(int(m.group(1)), int(m.group(2)), now_local)
+
+    # Relative labels are normally today's content.
+    joined = " ".join(strings)
+    if re.search(r"(刚刚|\d+\s*分钟前|\d+\s*小时前)", joined):
+        return now_local.date()
+
+    if "昨天" in joined:
+        return now_local.date() - timedelta(days=1)
+
+    return None
+
+
+def is_meta_string(s: str) -> bool:
+    s = s.strip()
+    if not s:
+        return True
+    if re.fullmatch(r"\d{1,2}-\d{1,2}", s):
+        return True
+    if re.fullmatch(r"\d+\s*评论", s):
+        return True
+    if re.fullmatch(r"(刚刚|\d+\s*分钟前|\d+\s*小时前|昨天)", s):
+        return True
+    # Common short section/category labels.
+    if len(s) <= 8 and s in {
+        "新闻", "动静", "深度", "人文", "观点", "特稿", "对话",
+        "地理", "写作", "阅读", "科学", "文化观察", "文化头条",
+        "自由谈", "知识分子", "健言", "社会", "经济", "时政",
+        "绿色", "科技", "生活", "评论"
+    }:
+        return True
+    return False
+
+
+def extract_card_fields(a, topic_name: str, now_local: datetime) -> dict | None:
+    url = normalize_content_url(a.get("href"))
+    if not url:
+        return None
+
+    strings = [re.sub(r"\s+", " ", s).strip() for s in a.stripped_strings]
+    strings = [s for s in strings if s]
+    if not strings:
+        return None
+
+    pub_date = parse_card_date(strings, now_local)
+
+    # On current South Weekend topic pages the first text fragment is the title.
+    title = strings[0].strip()
+    if len(title) < 2:
+        return None
+
+    # Public summary is usually the next substantial fragment before metadata.
+    summary = ""
+    for s in strings[1:]:
+        if is_meta_string(s):
+            continue
+        # Avoid accidentally repeating the title.
+        if s == title:
+            continue
+        if len(s) >= 18:
+            summary = s
+            break
+
+    return {
+        "id": content_id(url),
+        "url": url,
+        "topic": topic_name,
+        "title": title,
+        "date": pub_date.isoformat() if pub_date else None,
+        "description": summary,
+        "author": "",
+        "member_more": False,
+        "raw_fragments": strings[:8],
+    }
+
+
+def collect_topic_articles(session: requests.Session, cfg: dict, now_local: datetime) -> tuple[list[dict], list[dict]]:
     found: dict[str, dict] = {}
+    failures: list[dict] = []
     delay = float(cfg.get("request_delay_seconds", 1.0))
     per_topic = int(cfg.get("max_candidates_per_topic", 20))
     total_cap = int(cfg.get("max_total_candidates", 80))
 
     for topic in cfg["topics"]:
         print(f"[topic] {topic['name']}: {topic['url']}")
-        raw = get_html(session, topic["url"], delay=delay)
+        try:
+            raw = get_html(session, topic["url"], delay=delay)
+        except Exception as exc:
+            failures.append({"topic": topic["name"], "url": topic["url"], "error": str(exc)})
+            print(f"[topic-error] {topic['name']}: {exc}")
+            continue
+
         soup = BeautifulSoup(raw, "html.parser")
         count = 0
+
         for a in soup.find_all("a", href=True):
-            url = normalize_content_url(a.get("href"))
-            if not url:
+            item = extract_card_fields(a, topic["name"], now_local)
+            if not item:
                 continue
-            cid = content_id(url)
-            card_text = " ".join(a.stripped_strings)
+
+            cid = item["id"]
             if cid not in found:
-                found[cid] = {
-                    "id": cid,
-                    "url": url,
-                    "topic": topic["name"],
-                    "card_text": card_text,
-                }
+                found[cid] = item
                 count += 1
+
             if count >= per_topic or len(found) >= total_cap:
                 break
+
         print(f"  candidates: {count}")
         if len(found) >= total_cap:
             break
 
-    return list(found.values())
-
-
-def infer_year_for_mmdd(mm: int, dd: int, now_local: datetime) -> date:
-    candidate = date(now_local.year, mm, dd)
-    # Around New Year: a December item seen in January is probably previous year.
-    if candidate > now_local.date() + timedelta(days=45):
-        candidate = date(now_local.year - 1, mm, dd)
-    return candidate
-
-
-def parse_date_from_jsonld(soup: BeautifulSoup) -> date | None:
-    for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
-        raw = tag.string or tag.get_text()
-        if not raw:
-            continue
-        try:
-            obj = json.loads(raw)
-        except Exception:
-            continue
-        items = obj if isinstance(obj, list) else [obj]
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            val = item.get("datePublished") or item.get("dateCreated")
-            if not val:
-                continue
-            try:
-                return datetime.fromisoformat(str(val).replace("Z", "+00:00")).date()
-            except Exception:
-                pass
-    return None
-
-
-def meta_content(soup: BeautifulSoup, *, name=None, prop=None) -> str:
-    tag = None
-    if name:
-        tag = soup.find("meta", attrs={"name": name})
-    elif prop:
-        tag = soup.find("meta", attrs={"property": prop})
-    if not tag:
-        return ""
-    return (tag.get("content") or "").strip()
-
-
-def parse_article(session: requests.Session, item: dict, cfg: dict, now_local: datetime) -> dict:
-    raw = get_html(session, item["url"], delay=float(cfg.get("request_delay_seconds", 1.0)))
-    soup = BeautifulSoup(raw, "html.parser")
-    text = " ".join(soup.stripped_strings)
-
-    h1 = soup.find("h1")
-    title = h1.get_text(" ", strip=True) if h1 else ""
-    if not title:
-        title = meta_content(soup, prop="og:title") or meta_content(soup, name="title")
-    if not title:
-        snippet = re.sub(r"\\s+", " ", text[:180]).strip()
-        raise ValueError(f"No title: {item['url']} | response preview: {snippet}")
-
-    pub_date = parse_date_from_jsonld(soup)
-
-    if pub_date is None:
-        for prop in ("article:published_time", "og:published_time"):
-            val = meta_content(soup, prop=prop)
-            if val:
-                try:
-                    pub_date = datetime.fromisoformat(val.replace("Z", "+00:00")).date()
-                    break
-                except Exception:
-                    pass
-
-    if pub_date is None:
-        m = re.search(r"\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b", text)
-        if m:
-            pub_date = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-
-    if pub_date is None:
-        # South Weekend article pages commonly display "原创 08-17".
-        m = re.search(r"(?:原创\s*)?(\d{1,2})-(\d{1,2})(?:\s|$)", text)
-        if m:
-            pub_date = infer_year_for_mmdd(int(m.group(1)), int(m.group(2)), now_local)
-
-    description = (
-        meta_content(soup, prop="og:description")
-        or meta_content(soup, name="description")
-    )
-
-    if not description:
-        # Public lead/summary lines are often rendered as blockquotes.
-        quotes = [q.get_text(" ", strip=True) for q in soup.find_all("blockquote")]
-        description = " ".join(x for x in quotes if x)
-
-    description = re.sub(r"\s+", " ", description).strip()
-    max_chars = int(cfg.get("excerpt_max_chars", 360))
-    if len(description) > max_chars:
-        description = description[:max_chars].rstrip() + "…"
-
-    author = meta_content(soup, name="author")
-    member_more = "登录后获取更多权限" in text or "立即登录" in text
-
-    return {
-        **item,
-        "title": title,
-        "date": pub_date.isoformat() if pub_date else None,
-        "description": description,
-        "author": author,
-        "member_more": member_more,
-    }
+    return list(found.values()), failures
 
 
 def safe_text(s: str) -> str:
@@ -263,7 +240,7 @@ def make_epub(target_date: date, articles: list[dict], out_path: Path):
     <head><title>说明</title></head>
     <body>
       <h1>南方周末公开内容摘要 · {target_date.isoformat()}</h1>
-      <p>本电子书用于个人阅读整理，仅收录南方周末网页公开显示的标题、
+      <p>本电子书用于个人阅读整理，仅收录南方周末栏目页公开显示的标题、
       简短摘要和原文链接，不尝试绕过登录、会员或其他访问限制。</p>
       <p>共 {len(articles)} 篇。完整内容请通过每篇文章中的“打开原文”链接访问南方周末网站。</p>
     </body>
@@ -456,28 +433,16 @@ def main():
         return
 
     session = make_session()
-    candidates = collect_candidates(session, cfg)
-    if not candidates:
-        print("[wait] no candidates found; site may have changed or request was blocked")
+    parsed, topic_failures = collect_topic_articles(session, cfg, now_local)
+
+    if topic_failures:
+        print(f"[wait] {len(topic_failures)} topic pages failed; retry next scheduled run")
         generate_opds(sorted(published, key=lambda x: x["date"], reverse=True))
         generate_index(sorted(published, key=lambda x: x["date"], reverse=True))
         return
 
-    parsed = []
-    failures = []
-    for idx, item in enumerate(candidates, 1):
-        try:
-            a = parse_article(session, item, cfg, now_local)
-            parsed.append(a)
-            print(f"[article {idx}/{len(candidates)}] {a.get('date')} {a['title'][:50]}")
-        except Exception as exc:
-            failures.append({"url": item["url"], "error": str(exc)})
-            print(f"[error] {item['url']}: {exc}")
-
-    # Conservative rule: if any candidate page failed, do not publish this run.
-    # This favors completeness over speed.
-    if failures:
-        print(f"[wait] {len(failures)} candidate pages failed; retry next scheduled run")
+    if not parsed:
+        print("[wait] no candidates found; topic-page HTML may have changed")
         generate_opds(sorted(published, key=lambda x: x["date"], reverse=True))
         generate_index(sorted(published, key=lambda x: x["date"], reverse=True))
         return
@@ -490,6 +455,10 @@ def main():
     target_articles = list(dedup.values())
 
     target_articles.sort(key=lambda x: int(x["id"]) if x["id"].isdigit() else 0)
+
+    print(f"[target-count] {target.isoformat()}: {len(target_articles)} articles")
+    for a in target_articles[:10]:
+        print(f"[target-item] {a['id']} | {a['topic']} | {a['title'][:70]}")
 
     min_articles = int(cfg.get("min_articles", 1))
     if len(target_articles) < min_articles:
