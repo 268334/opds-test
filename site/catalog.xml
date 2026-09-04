@@ -2,11 +2,22 @@
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/terms/">
   <id>urn:uuid:infzm-personal-opds</id>
   <title>我的南方周末阅读书架</title>
-  <updated>2026-09-03T08:56:58Z</updated>
+  <updated>2026-09-04T08:51:26Z</updated>
   <author>
     <name>个人 OPDS 阅读器</name>
   </author>
   <link rel="self" href="catalog.xml" type="application/atom+xml;profile=opds-catalog;kind=acquisition" />
+  <entry>
+    <id>urn:infzm-digest:2026-09-03</id>
+    <title>南方周末公开内容摘要 · 2026-09-03</title>
+    <updated>2026-09-04T08:51:26Z</updated>
+    <author>
+      <name>个人 OPDS 阅读器</name>
+    </author>
+    <dc:language>zh-CN</dc:language>
+    <summary>公开标题/摘要索引，共 10 篇；完整内容请访问原网站。</summary>
+    <link rel="http://opds-spec.org/acquisition/open-access" href="books/infzm-public-digest-2026-09-03.epub" type="application/epub+zip" />
+  </entry>
   <entry>
     <id>urn:infzm-digest:2026-09-02</id>
     <title>南方周末公开内容摘要 · 2026-09-02</title>
