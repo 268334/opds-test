@@ -1,6 +1,13 @@
 [
   {
     "count": 8,
+    "date": "2026-11-26",
+    "filename": "infzm-public-digest-2026-11-26.epub",
+    "title": "南方周末公开内容摘要 · 2026-11-26",
+    "updated": "2026-11-27T13:52:40Z"
+  },
+  {
+    "count": 8,
     "date": "2026-11-25",
     "filename": "infzm-public-digest-2026-11-25.epub",
     "title": "南方周末公开内容摘要 · 2026-11-25",
@@ -411,12 +418,5 @@
     "filename": "infzm-public-digest-2026-08-19.epub",
     "title": "南方周末公开内容摘要 · 2026-08-19",
     "updated": "2026-08-20T02:30:37Z"
-  },
-  {
-    "count": 9,
-    "date": "2026-08-18",
-    "filename": "infzm-public-digest-2026-08-18.epub",
-    "title": "南方周末公开内容摘要 · 2026-08-18",
-    "updated": "2026-08-19T02:31:47Z"
   }
 ]
